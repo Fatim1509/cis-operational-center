@@ -2,7 +2,7 @@ name: Receive Intelligence Update
 
 on:
   repository_dispatch:
-    types: [cis-intelligence-update, cis-test]
+    types: [cis-intelligence-update]
 
 env:
   PYTHON_VERSION: '3.9'
@@ -23,90 +23,53 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
 
-    - name: Log dispatch event
+    - name: Install dependencies
       run: |
-        echo "📡 Received repository dispatch event"
-        echo "   Event type: ${{ github.event.action }}"
-        echo "   Repository: ${{ github.repository }}"
-        echo "   Timestamp: $(date -u)"
-        echo "   Client payload:"
-        echo '${{ toJson(github.event.client_payload) }}' | jq '.'
+        python -m pip install --upgrade pip
+        pip install pyyaml requests
 
-    - name: Process intelligence data
+    - name: Process intelligence payload
       run: |
-        echo "🧠 Processing intelligence update..."
+        echo "📥 Processing intelligence update from ${{ github.event.client_payload.sender }}"
+        echo "📊 Payload received at: ${{ github.event.client_payload.dispatch_time }}"
         
-        # Create data directory if it doesn't exist
-        mkdir -p data
-        
-        # Save client payload to master_intel.json
-        cat > data/master_intel.json << 'EOF'
+        # Save payload to file
+        cat > data/incoming_intel.json << 'EOF'
         ${{ toJson(github.event.client_payload) }}
         EOF
         
-        echo "✅ Intelligence data saved to data/master_intel.json"
+        # Process the intelligence
+        python api/process_intelligence.py --input data/incoming_intel.json --output data/master_intel.json
         
-        # Show summary
-        if [ -f data/master_intel.json ]; then
-          echo "📊 Intelligence Summary:"
-          if command -v jq >/dev/null 2>&1; then
-            jq -r '.summary // .' data/master_intel.json || echo "No summary available"
-          else
-            cat data/master_intel.json | head -20
-          fi
-        fi
+        echo "✅ Intelligence processed successfully"
 
-    - name: Update timestamp file
+    - name: Update dashboard
       run: |
-        echo "$(date -u): Intelligence update received - ${{ github.event.action }}" > data/last_update.txt
-        echo "✅ Timestamp updated"
+        echo "🔄 Updating dashboard..."
+        python dashboard/update_dashboard.py --data data/master_intel.json
+        echo "✅ Dashboard updated"
 
-    - name: Trigger dashboard update
-      if: success()
+    - name: Commit changes
       run: |
-        echo "🚀 Triggering dashboard update..."
-        # This could trigger a webhook or update a database
-        echo "✅ Dashboard update triggered"
+        git config --global user.name 'CIS Command Center'
+        git config --global user.email 'cis-command@users.noreply.github.com'
+        
+        git add data/master_intel.json
+        git add dashboard/index.html
+        git commit -m "🔄 Intelligence update: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+        git push origin main || echo "Push failed, continuing..."
 
-    - name: Notify Discord (if configured)
-      if: env.DISCORD_WEBHOOK != ''
-      env:
-        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+    - name: Notify Discord
+      if: always()
       run: |
-        echo "📢 Sending Discord notification..."
-        curl -X POST -H "Content-Type: application/json" \
-          -d '{
-            "content": "🎯 New CIS intelligence update received",
-            "embeds": [{
-              "title": "Intelligence Update",
-              "description": "New financial intelligence data has been processed",
-              "color": 3447003,
-              "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)'",
-              "fields": [
-                {"name": "Source", "value": "'${{ github.repository }}'", "inline": true},
-                {"name": "Event", "value": "'${{ github.event.action }}'", "inline": true},
-                {"name": "Status", "value": "✅ Processed", "inline": true}
-              ]
-            }]
-          }' \
-          $DISCORD_WEBHOOK || echo "Discord notification failed, continuing..."
+        python api/notify_discord.py --webhook "${{ secrets.DISCORD_WEBHOOK }}" --status success
+      continue-on-error: true
 
-    - name: Upload processed data
+    - name: Upload artifacts
       uses: actions/upload-artifact@v3
       with:
-        name: cis-intelligence-${{ github.run_number }}
+        name: intelligence-update-${{ github.run_number }}
         path: |
+          data/incoming_intel.json
           data/master_intel.json
-          data/last_update.txt
-        retention-days: 30
-
-  test-dispatch:
-    runs-on: ubuntu-latest
-    if: github.event.action == 'cis-test'
-    
-    steps:
-    - name: Handle test dispatch
-      run: |
-        echo "🧪 Test dispatch received"
-        echo "   Payload: ${{ toJson(github.event.client_payload) }}"
-        echo "✅ Test completed successfully"
+        retention-days: 7

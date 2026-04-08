@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CIS Dashboard - Center Intelligence System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+    <div class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2 text-blue-400">
+                <i class="fas fa-brain mr-2"></i>
+                CIS Dashboard
+            </h1>
+            <p class="text-gray-400">Center Intelligence System - Real-time Financial Intelligence</p>
+            <div id="last-updated" class="text-sm text-gray-500 mt-2">Loading...</div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Total Signals</p>
+                        <p id="total-signals" class="text-2xl font-bold text-blue-400">0</p>
+                    </div>
+                    <i class="fas fa-signal text-blue-400 text-2xl"></i>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Positive</p>
+                        <p id="positive-count" class="text-2xl font-bold text-green-400">0</p>
+                    </div>
+                    <i class="fas fa-arrow-up text-green-400 text-2xl"></i>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Negative</p>
+                        <p id="negative-count" class="text-2xl font-bold text-red-400">0</p>
+                    </div>
+                    <i class="fas fa-arrow-down text-red-400 text-2xl"></i>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-400 text-sm">Avg Confidence</p>
+                        <p id="avg-confidence" class="text-2xl font-bold text-yellow-400">0%</p>
+                    </div>
+                    <i class="fas fa-bullseye text-yellow-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4 text-blue-400">
+                    <i class="fas fa-chart-pie mr-2"></i>
+                    Sentiment Distribution
+                </h3>
+                <canvas id="sentiment-chart" width="400" height="200"></canvas>
+            </div>
+
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h3 class="text-xl font-semibold mb-4 text-blue-400">
+                    <i class="fas fa-chart-line mr-2"></i>
+                    Confidence Trends
+                </h3>
+                <canvas id="confidence-chart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Signals Table -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700">
+            <div class="p-6 border-b border-gray-700">
+                <h3 class="text-xl font-semibold text-blue-400">
+                    <i class="fas fa-table mr-2"></i>
+                    Recent Signals
+                </h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-700">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Title</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Sentiment</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Confidence</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Source</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signals-tbody" class="bg-gray-800 divide-y divide-gray-700">
+                        <tr>
+                            <td colspan="5" class="px-6 py-4 text-center text-gray-400">Loading signals...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-8 text-gray-500">
+            <p>CIS - Center Intelligence System v1.0.0</p>
+            <p class="text-sm">Real-time financial intelligence processing</p>
+        </div>
+    </div>
+
+    <script>
+        // Load intelligence data
+        async function loadIntelligenceData() {
+            try {
+                const response = await fetch('../data/master_intel.json');
+                const data = await response.json();
+                updateDashboard(data);
+            } catch (error) {
+                console.error('Error loading intelligence data:', error);
+                document.getElementById('last-updated').textContent = 'Error loading data';
+            }
+        }
+
+        // Update dashboard with data
+        function updateDashboard(data) {
+            const signals = data.signals || [];
+            const summary = data.summary || {};
+            const breakdown = summary.sentiment_breakdown || {positive: 0, negative: 0, neutral: 0};
+
+            // Update stats
+            document.getElementById('total-signals').textContent = signals.length;
+            document.getElementById('positive-count').textContent = breakdown.positive;
+            document.getElementById('negative-count').textContent = breakdown.negative;
+            document.getElementById('avg-confidence').textContent = 
+                (summary.avg_confidence * 100).toFixed(1) + '%';
+
+            // Update last updated time
+            const lastUpdated = new Date(data.last_updated);
+            document.getElementById('last-updated').textContent = 
+                `Last updated: ${lastUpdated.toLocaleString()}`;
+
+            // Update charts
+            updateSentimentChart(breakdown);
+            updateConfidenceChart(signals);
+
+            // Update signals table
+            updateSignalsTable(signals);
+        }
+
+        // Update sentiment chart
+        function updateSentimentChart(breakdown) {
+            const ctx = document.getElementById('sentiment-chart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Positive', 'Negative', 'Neutral'],
+                    datasets: [{
+                        data: [breakdown.positive, breakdown.negative, breakdown.neutral],
+                        backgroundColor: ['#10b981', '#ef4444', '#6b7280'],
+                        borderColor: ['#059669', '#dc2626', '#4b5563'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ffffff' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update confidence chart
+        function updateConfidenceChart(signals) {
+            const ctx = document.getElementById('confidence-chart').getContext('2d');
+            const confidences = signals.map(s => s.confidence || 0).slice(0, 20);
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: confidences.map((_, i) => i + 1),
+                    datasets: [{
+                        label: 'Confidence',
+                        data: confidences,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#ffffff' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1,
+                            ticks: { color: '#ffffff' },
+                            grid: { color: '#374151' }
+                        },
+                        x: {
+                            ticks: { color: '#ffffff' },
+                            grid: { color: '#374151' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update signals table
+        function updateSignalsTable(signals) {
+            const tbody = document.getElementById('signals-tbody');
+            tbody.innerHTML = '';
+
+            if (signals.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-400">No signals available</td></tr>';
+                return;
+            }
+
+            signals.slice(0, 10).forEach(signal => {
+                const row = document.createElement('tr');
+                
+                // Sentiment badge
+                const sentimentBadge = signal.sentiment === 'positive' 
+                    ? '<span class="bg-green-600 text-white px-2 py-1 rounded text-xs">📈 Positive</span>'
+                    : signal.sentiment === 'negative'
+                    ? '<span class="bg-red-600 text-white px-2 py-1 rounded text-xs">📉 Negative</span>'
+                    : '<span class="bg-gray-600 text-white px-2 py-1 rounded text-xs">➡️ Neutral</span>';
+
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        ${signal.title || 'Unknown'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        ${sentimentBadge}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        ${((signal.confidence || 0) * 100).toFixed(1)}%
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        ${signal.source || 'Unknown'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                        ${new Date(signal.timestamp).toLocaleString()}
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadIntelligenceData, 30000);
+
+        // Initial load
+        loadIntelligenceData();
+    </script>
+</body>
+</html>
